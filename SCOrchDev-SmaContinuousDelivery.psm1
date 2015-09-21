@@ -83,78 +83,59 @@ Function Invoke-GitRepositorySync
             {
                 Publish-SMASettingsFileChange -FilePath $SettingsFilePath `
                                               -CurrentCommit $RepositoryChange.CurrentCommit `
-                                              -RepositoryName $RepositoryName
+                                              -RepositoryName $RepositoryName `
+                                              -Credential $Credential `
+                                              -WebserviceEndpoint $WebserviceEndpoint `
+                                              -WebservicePort $WebserviceEndpoint
             }
             
             Foreach($ModulePath in $ReturnInformation.ModuleFiles)
             {
-                Try
-                {
-                    $PowerShellModuleInformation = Test-ModuleManifest -Path $ModulePath
-                    $ModuleName = $PowerShellModuleInformation.Name -as [string]
-                    $ModuleVersion = $PowerShellModuleInformation.Version -as [string]
-                    $PowerShellModuleInformation = Import-SmaPowerShellModule -ModulePath $ModulePath `
-                                                                              -WebserviceEndpoint $WebserviceEndpoint `
-                                                                              -WebservicePort $WebservicePort `
-                                                                              -Credential $SMACred
-                }
-                Catch
-                {
-                    $Exception = New-Exception -Type 'ImportSmaPowerShellModuleFailure' `
-                                               -Message 'Failed to import a PowerShell module into Sma' `
-                                               -Property @{
-                        'ErrorMessage' = (Convert-ExceptionToString -Exception $_) ;
-                        'ModulePath' = $ModulePath ;
-                        'ModuleName' = $ModuleName ;
-                        'ModuleVersion' = $ModuleVersion ;
-                        'PowerShellModuleInformation' = "$(ConvertTo-JSON -InputObject $PowerShellModuleInformation)" ;
-                        'Credential' = $Credential.UserName ;
-                    }
-                    Write-Warning -Message $Exception -WarningAction Continue
-                }
+                
+                Import-SmaPowerShellModule -ModulePath $ModulePath `
+                                           -WebserviceEndpoint $WebserviceEndpoint `
+                                           -WebservicePort $WebservicePort `
+                                           -Credential $SMACred
             }
 
             Foreach($RunbookFilePath in $ReturnInformation.ScriptFiles)
             {
                 Publish-SMARunbookChange -FilePath $RunbookFilePath `
                                          -CurrentCommit $RepositoryChange.CurrentCommit `
-                                         -RepositoryName $RepositoryName
+                                         -RepositoryName $RepositoryName `
+                                         -Credential $Credential `
+                                         -WebserviceEndpoint $WebserviceEndpoint `
+                                         -WebservicePort $WebserviceEndpoint
             }
             
             if($ReturnInformation.CleanRunbooks)
             {
-                Remove-SmaOrphanRunbook -RepositoryName $RepositoryName
+                Remove-SmaOrphanRunbook -RepositoryName $RepositoryName `
+                                         -RepositoryInformationJSON $RepositoryInformationJSON `
+                                         -Credential $Credential `
+                                         -WebserviceEndpoint $WebserviceEndpoint `
+                                         -WebservicePort $WebserviceEndpoint
             }
             if($ReturnInformation.CleanAssets)
             {
-                Remove-SmaOrphanAsset -RepositoryName $RepositoryName
+                Remove-SmaOrphanAsset -RepositoryName $RepositoryName `
+                                      -RepositoryInformationJSON $RepositoryInformationJSON `
+                                      -Credential $Credential `
+                                      -WebserviceEndpoint $WebserviceEndpoint `
+                                      -WebservicePort $WebserviceEndpoint
             }
             if($ReturnInformation.CleanModules)
             {
-                Remove-SmaOrphanModule
+                Remove-SmaOrphanModule -RepositoryName $RepositoryName `
+                                        -Credential $Credential `
+                                        -WebserviceEndpoint $WebserviceEndpoint `
+                                        -WebservicePort $WebserviceEndpoint
             }
             if($ReturnInformation.ModuleFiles)
             {
-                Try
-                {
-                    Write-Verbose -Message 'Validating Module Path on Runbook Wokers'
-                    $RepositoryModulePath = "$($RepositoryInformation.Path)\$($RepositoryInformation.PowerShellModuleFolder)"
-                    Invoke-Command -ComputerName $RunbookWorker -Credential $Credential -ScriptBlock {
-                        Add-PSEnvironmentPathLocation -Path $Using:RepositoryModulePath -Location Machine
-                    }
-                    Write-Verbose -Message 'Finished Validating Module Path on Runbook Wokers'
-                }
-                Catch
-                {
-                    $Exception = New-Exception -Type 'PowerShellModulePathValidationError' `
-                                               -Message 'Failed to set PSModulePath' `
-                                               -Property @{
-                        'ErrorMessage' = (Convert-ExceptionToString $_) ;
-                        'RepositoryModulePath' = $RepositoryModulePath ;
-                        'RunbookWorker' = $RunbookWorker ;
-                    }
-                    Write-Warning -Message $Exception -WarningAction Continue
-                }
+                Update-LocalRunbookWokerModulePath -RunbookWorker $RunbookWorker `
+                                                   -PowerShellModuleFolder "$($RepositoryInformation.Path)\$($RepositoryInformation.PowerShellModuleFolder)"
+                
             }
             $UpdatedRepositoryInformation = (Update-RepositoryInformationCommitVersion -RepositoryInformation $RepositoryInformation `
                                                                                        -RepositoryName $RepositoryName `
@@ -247,17 +228,17 @@ Function Publish-SMARunbookChange
             $TagUpdateJSON = New-ChangesetTagLine -TagLine $Runbook.Tags `
                                                   -CurrentCommit $CurrentCommit `
                                                   -RepositoryName $RepositoryName
-            $TagUpdate = ConvertFrom-Json $TagUpdateJSON
+            $TagUpdate = ConvertFrom-Json -InputObject $TagUpdateJSON
             $TagLine = $TagUpdate.TagLine
             $NewVersion = $TagUpdate.NewVersion
             if($NewVersion)
             {
-                $EditStatus = Edit-SmaRunbook -Overwrite `
-                                              -Path $FilePath `
-                                              -Name $WorkflowName `
-                                              -WebServiceEndpoint $WebserviceEndpoint `
-                                              -Port $WebservicePort `
-                                              -Credential $Credential
+                $Null = Edit-SmaRunbook -Overwrite `
+                                        -Path $FilePath `
+                                        -Name $WorkflowName `
+                                        -WebServiceEndpoint $WebserviceEndpoint `
+                                        -Port $WebservicePort `
+                                        -Credential $Credential
             }
             else
             {
@@ -266,10 +247,10 @@ Function Publish-SMARunbookChange
         }
         if($NewVersion)
         {
-            $PublishHolder = Publish-SmaRunbook -Name $WorkflowName `
-                                                -WebServiceEndpoint $WebserviceEndpoint `
-                                                -Port $WebservicePort `
-                                                -Credential $Credential
+            $Null = Publish-SmaRunbook -Name $WorkflowName `
+                                       -WebServiceEndpoint $WebserviceEndpoint `
+                                       -Port $WebservicePort `
+                                       -Credential $Credential
 
             Set-SmaRunbookTags -RunbookID $Runbook.RunbookID.Guid `
                                -Tags $TagLine `
@@ -376,11 +357,9 @@ Function Publish-SMASettingsFileChange
                     }
                     if($Variable.isEncrypted -as [bool])
                     {
-                        $null = $SmaVariableParameters.Add('Encrypted',$True)
-                        $CreateEncryptedVariable = Set-SmaVariable @SmaVariableParameters `
-                                                                   -Encrypted
+                        $Null = $SmaVariableParameters.Add('Encrypted',$True)
                     }
-                    $null = Set-SmaVariable @SmaVariableParameters
+                    $Null = Set-SmaVariable @SmaVariableParameters
                 }
                 else
                 {
@@ -393,7 +372,7 @@ Function Publish-SMASettingsFileChange
                 $Exception = New-Exception -Type 'VariablePublishFailure' `
                                            -Message 'Failed to publish a variable to SMA' `
                                            -Property @{
-                    'ErrorMessage' = Convert-ExceptionToString $_ ;
+                    'ErrorMessage' = Convert-ExceptionToString -Exception $_ ;
                     'VariableName' = $VariableName ;
                 }
                 Write-Warning -Message $Exception -WarningAction Continue
@@ -460,7 +439,7 @@ Function Publish-SMASettingsFileChange
                     try
                     {
                         $Parameters   = ConvertFrom-PSCustomObject -InputObject $Schedule.Parameter `
-                                                                   -MemberType NoteProperty `
+                                                                   -MemberType NoteProperty
                         $RunbookStart = Start-SmaRunbook -Name $Schedule.RunbookName `
                                                          -ScheduleName $ScheduleName `
                                                          -WebServiceEndpoint $WebserviceEndpoint `
@@ -517,7 +496,7 @@ Function Remove-SmaOrphanAsset
     Param(
         [Parameter(Mandatory=$True)]
         [string]
-        $RepositoryInfoJSON,
+        $RepositoryInformationJSON,
         
         [Parameter(Mandatory=$True)]
         [string]
@@ -543,7 +522,7 @@ Function Remove-SmaOrphanAsset
 
     Try
     {
-        $RepositoryInformation = $RepositoryInfoJSON | ConvertFrom-Json
+        $RepositoryInformation = ($RepositoryInformationJSON | ConvertFrom-Json)."$RepositoryName"
 
         $SmaVariables = Get-SmaVariable -WebServiceEndpoint $WebserviceEndpoint `
                                         -Port $WebservicePort `
@@ -626,7 +605,7 @@ Function Remove-SmaOrphanAsset
                     $Exception = New-Exception -Type 'RemoveSmaAssetFailure' `
                                                 -Message 'Failed to remove a Sma Asset' `
                                                 -Property @{
-                        'ErrorMessage' = (Convert-ExceptionToString $_) ;
+                        'ErrorMessage' = (Convert-ExceptionToString -Exception $_) ;
                         'AssetName' = $Difference.InputObject ;
                         'AssetType' = 'Schedule' ;
                         'WebserviceEnpoint' = $WebserviceEndpoint ;
@@ -648,7 +627,7 @@ Function Remove-SmaOrphanAsset
         $Exception = New-Exception -Type 'RemoveSmaOrphanAssetWorkflowFailure' `
                                    -Message 'Unexpected error encountered in the Remove-SmaOrphanAsset workflow' `
                                    -Property @{
-            'ErrorMessage' = (Convert-ExceptionToString $_) ;
+            'ErrorMessage' = (Convert-ExceptionToString -Exception $_) ;
             'RepositoryName' = $RepositoryName ;
         }
         Write-Exception -Exception $Exception -Stream Warning
@@ -725,7 +704,7 @@ Function Remove-SmaOrphanModule
                         $Exception = New-Exception -Type 'RemoveSmaModuleFailure' `
                                                    -Message 'Failed to remove a Sma Module' `
                                                    -Property @{
-                            'ErrorMessage' = (Convert-ExceptionToString $_) ;
+                            'ErrorMessage' = (Convert-ExceptionToString -Exception $_) ;
                             'RunbookName' = $Difference.InputObject ;
                             'WebserviceEnpoint' = $CIVariables.WebserviceEndpoint ;
                             'Port' = $CIVariables.WebservicePort ;
@@ -742,7 +721,7 @@ Function Remove-SmaOrphanModule
         $Exception = New-Exception -Type 'RemoveSmaOrphanModuleWorkflowFailure' `
                                    -Message 'Unexpected error encountered in the Remove-SmaOrphanModule workflow' `
                                    -Property @{
-            'ErrorMessage' = (Convert-ExceptionToString $_) ;
+            'ErrorMessage' = (Convert-ExceptionToString -Exception $_) ;
             'RepositoryName' = $RepositoryName ;
         }
         Write-Exception -Exception $Exception -Stream Warning
@@ -765,7 +744,7 @@ Function Remove-SmaOrphanRunbook
     Param(
         [Parameter(Mandatory=$True)]
         [string]
-        $RepositoryInfoJSON,
+        $RepositoryInformationJSON,
         
         [Parameter(Mandatory=$True)]
         [string]
@@ -791,7 +770,7 @@ Function Remove-SmaOrphanRunbook
 
     Try
     {
-        $RepositoryInformation = (ConvertFrom-JSON -InputObject $RepositoryInfoJSON)."$RepositoryName"
+        $RepositoryInformation = ($RepositoryInformationJSON | ConvertFrom-Json)."$RepositoryName"
 
         $SmaRunbooks = Get-SMARunbookPaged -WebserviceEndpoint $WebserviceEndpoint `
                                            -Port $WebservicePort `
@@ -819,7 +798,7 @@ Function Remove-SmaOrphanRunbook
                     $Exception = New-Exception -Type 'RemoveSmaRunbookFailure' `
                                                -Message 'Failed to remove a Sma Runbook' `
                                                -Property @{
-                        'ErrorMessage' = (Convert-ExceptionToString $_) ;
+                        'ErrorMessage' = (Convert-ExceptionToString -Exception $_) ;
                         'RunbookName' = $Difference.InputObject ;
                         'WebserviceEnpoint' = $WebserviceEndpoint ;
                         'Port' = $WebservicePort ;
@@ -835,11 +814,50 @@ Function Remove-SmaOrphanRunbook
         $Exception = New-Exception -Type 'RemoveSmaOrphanRunbookWorkflowFailure' `
                                    -Message 'Unexpected error encountered in the Remove-SmaOrphanRunbook workflow' `
                                    -Property @{
-            'ErrorMessage' = (Convert-ExceptionToString $_) ;
+            'ErrorMessage' = (Convert-ExceptionToString -Exception $_) ;
             'RepositoryName' = $RepositoryName ;
         }
         Write-Exception -Exception $Exception -Stream Warning
     }
-    Write-Verbose -Message "Finished [$WorkflowCommandName]"
+    Write-CompletedMessage -StartTime $StartTime -Name $FunctionName
+}
+
+Update-LocalRunbookWokerModulePath
+{
+    Param(
+        [Parameter(Mandatory=$True)]
+        [string[]]
+        $RunbookWorker,
+
+        [Parameter(Mandatory=$True)]
+        [string]
+        $PowerShellModuleFolder
+    )
+
+    $ErrorActionPreference = [System.Management.Automation.ActionPreference]::Stop
+    $FunctionName = (Get-PSCallStack)[0].Command
+    Write-Verbose -Message "Starting [$FunctionName]"
+    $StartTime = Get-Date
+
+    Try
+    {
+        Write-Verbose -Message 'Validating Module Path on Runbook Wokers'
+        Invoke-Command -ComputerName $RunbookWorker -Credential $Credential -ScriptBlock {
+            Add-PSEnvironmentPathLocation -Path $Using:PowerShellModuleFolder -Location Machine
+        }
+        Write-Verbose -Message 'Finished Validating Module Path on Runbook Wokers'
+    }
+    Catch
+    {
+        $Exception = New-Exception -Type 'PowerShellModulePathValidationError' `
+                                    -Message 'Failed to set PSModulePath' `
+                                    -Property @{
+            'ErrorMessage' = (Convert-ExceptionToString -Exception $_) ;
+            'RepositoryModulePath' = $RepositoryModulePath ;
+            'RunbookWorker' = $RunbookWorker ;
+        }
+        Write-Warning -Message $Exception -WarningAction Continue
+    }
+    Write-CompletedMessage -StartTime $StartTime -Name $FunctionName
 }
 Export-ModuleMember -Function * -Verbose:$false -Debug:$False
