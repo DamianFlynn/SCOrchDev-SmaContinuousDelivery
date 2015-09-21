@@ -5,45 +5,68 @@
 
 .Parameter RepositoryName
 #>
-Workflow Invoke-GitRepositorySync
+Function Invoke-GitRepositorySync
 {
     Param(
-        [Parameter(Mandatory = $true)]
+        [Parameter(
+            Mandatory = $true,
+            Position = 0
+        )]
         [String]
-        $RepositoryName
+        $RepositoryInformationJSON,
+
+        [Parameter(
+            Mandatory = $true,
+            Position = 0
+        )]
+        [String]
+        $RepositoryName,
+
+        [Parameter(
+            Mandatory = $true,
+            Position = 1
+        )]
+        [pscredential]
+        $Credential,
+
+        [Parameter(
+            Mandatory = $true,
+            Position = 2
+        )]
+        [string]
+        $WebserviceEndpoint,
+
+        [Parameter(
+            Mandatory = $true,
+            Position = 3
+        )]
+        [string]
+        $WebservicePort = '9090'
     )
     
-    Write-Verbose -Message "Starting [$WorkflowCommandName]"
     $ErrorActionPreference = [System.Management.Automation.ActionPreference]::Stop
+    $FunctionName = (Get-PSCallStack)[0].Command
+    Write-Verbose -Message "Starting [$FunctionName]"
+    $StartTime = Get-Date
 
-    $CIVariables = Get-BatchAutomationVariable -Name @('RepositoryInformation', 
-                                                       'SMACredName',
-                                                       'WebserviceEndpoint'
-                                                       'WebservicePort') `
-                                               -Prefix 'SMAContinuousIntegration'
-    $SMACred = Get-AutomationPSCredential -Name $CIVariables.SMACredName
     Try
     {
-        $RepositoryInformation = (ConvertFrom-Json -InputObject $CIVariables.RepositoryInformation)."$RepositoryName"
+        $RepositoryInformation = (ConvertFrom-Json -InputObject $RepositoryInformationJSON)."$RepositoryName"
         Write-Verbose -Message "`$RepositoryInformation [$(ConvertTo-Json -InputObject $RepositoryInformation)]"
 
         $RunbookWorker = Get-SMARunbookWorker
         
         # Update the repository on all SMA Workers
-        InlineScript
-        {
-            $ErrorActionPreference = [System.Management.Automation.ActionPreference]::Continue
-            & {
-                $null = $(
-                    $DebugPreference       = [System.Management.Automation.ActionPreference]::SilentlyContinue
-                    $VerbosePreference     = [System.Management.Automation.ActionPreference]::SilentlyContinue
-                    $ErrorActionPreference = [System.Management.Automation.ActionPreference]::Stop
+        Invoke-Command -ComputerName $RunbookWorker -Credential $Credential -ScriptBlock {
+            $null = $(
+                $DebugPreference       = [System.Management.Automation.ActionPreference]::SilentlyContinue
+                $VerbosePreference     = [System.Management.Automation.ActionPreference]::SilentlyContinue
+                $ErrorActionPreference = [System.Management.Automation.ActionPreference]::Stop
                     
-                    $RepositoryInformation = $Using:RepositoryInformation
-                    Update-GitRepository -RepositoryInformation $RepositoryInformation
-                )
-            }
-        } -PSComputerName $RunbookWorker -PSCredential $SMACred
+                $RepositoryInformation = $Using:RepositoryInformation
+                Update-GitRepository -RepositoryInformation $RepositoryInformation
+            )
+        }
 
         $RepositoryChangeJSON = Find-GitRepositoryChange -RepositoryInformation $RepositoryInformation
         $RepositoryChange = ConvertFrom-Json -InputObject $RepositoryChangeJSON
@@ -59,9 +82,8 @@ Workflow Invoke-GitRepositorySync
             Foreach($SettingsFilePath in $ReturnInformation.SettingsFiles)
             {
                 Publish-SMASettingsFileChange -FilePath $SettingsFilePath `
-                                         -CurrentCommit $RepositoryChange.CurrentCommit `
-                                         -RepositoryName $RepositoryName
-                Checkpoint-Workflow
+                                              -CurrentCommit $RepositoryChange.CurrentCommit `
+                                              -RepositoryName $RepositoryName
             }
             
             Foreach($ModulePath in $ReturnInformation.ModuleFiles)
@@ -72,8 +94,8 @@ Workflow Invoke-GitRepositorySync
                     $ModuleName = $PowerShellModuleInformation.Name -as [string]
                     $ModuleVersion = $PowerShellModuleInformation.Version -as [string]
                     $PowerShellModuleInformation = Import-SmaPowerShellModule -ModulePath $ModulePath `
-                                                                              -WebserviceEndpoint $CIVariables.WebserviceEndpoint `
-                                                                              -WebservicePort $CIVariables.WebservicePort `
+                                                                              -WebserviceEndpoint $WebserviceEndpoint `
+                                                                              -WebservicePort $WebservicePort `
                                                                               -Credential $SMACred
                 }
                 Catch
@@ -81,19 +103,15 @@ Workflow Invoke-GitRepositorySync
                     $Exception = New-Exception -Type 'ImportSmaPowerShellModuleFailure' `
                                                -Message 'Failed to import a PowerShell module into Sma' `
                                                -Property @{
-                        'ErrorMessage' = (Convert-ExceptionToString $_) ;
+                        'ErrorMessage' = (Convert-ExceptionToString -Exception $_) ;
                         'ModulePath' = $ModulePath ;
                         'ModuleName' = $ModuleName ;
                         'ModuleVersion' = $ModuleVersion ;
-                        'PowerShellModuleInformation' = "$(ConvertTo-JSON $PowerShellModuleInformation)" ;
-                        'WebserviceEnpoint' = $CIVariables.WebserviceEndpoint ;
-                        'Port' = $CIVariables.WebservicePort ;
-                        'Credential' = $SMACred.UserName ;
+                        'PowerShellModuleInformation' = "$(ConvertTo-JSON -InputObject $PowerShellModuleInformation)" ;
+                        'Credential' = $Credential.UserName ;
                     }
                     Write-Warning -Message $Exception -WarningAction Continue
                 }
-                
-                Checkpoint-Workflow
             }
 
             Foreach($RunbookFilePath in $ReturnInformation.ScriptFiles)
@@ -101,23 +119,19 @@ Workflow Invoke-GitRepositorySync
                 Publish-SMARunbookChange -FilePath $RunbookFilePath `
                                          -CurrentCommit $RepositoryChange.CurrentCommit `
                                          -RepositoryName $RepositoryName
-                Checkpoint-Workflow
             }
             
             if($ReturnInformation.CleanRunbooks)
             {
                 Remove-SmaOrphanRunbook -RepositoryName $RepositoryName
-                Checkpoint-Workflow
             }
             if($ReturnInformation.CleanAssets)
             {
                 Remove-SmaOrphanAsset -RepositoryName $RepositoryName
-                Checkpoint-Workflow
             }
             if($ReturnInformation.CleanModules)
             {
                 Remove-SmaOrphanModule
-                Checkpoint-Workflow
             }
             if($ReturnInformation.ModuleFiles)
             {
@@ -125,10 +139,9 @@ Workflow Invoke-GitRepositorySync
                 {
                     Write-Verbose -Message 'Validating Module Path on Runbook Wokers'
                     $RepositoryModulePath = "$($RepositoryInformation.Path)\$($RepositoryInformation.PowerShellModuleFolder)"
-                    inlinescript
-                    {
-                        Add-PSEnvironmentPathLocation -Path $Using:RepositoryModulePath
-                    } -PSComputerName $RunbookWorker -PSCredential $SMACred
+                    Invoke-Command -ComputerName $RunbookWorker -Credential $Credential -ScriptBlock {
+                        Add-PSEnvironmentPathLocation -Path $Using:RepositoryModulePath -Location Machine
+                    }
                     Write-Verbose -Message 'Finished Validating Module Path on Runbook Wokers'
                 }
                 Catch
@@ -142,18 +155,10 @@ Workflow Invoke-GitRepositorySync
                     }
                     Write-Warning -Message $Exception -WarningAction Continue
                 }
-                
-                Checkpoint-Workflow
             }
-            $UpdatedRepositoryInformation = (Set-SmaRepositoryInformationCommitVersion -RepositoryInformation $CIVariables.RepositoryInformation `
+            $UpdatedRepositoryInformation = (Update-RepositoryInformationCommitVersion -RepositoryInformation $RepositoryInformation `
                                                                                        -RepositoryName $RepositoryName `
                                                                                        -Commit $RepositoryChange.CurrentCommit) -as [string]
-            $VariableUpdate = Set-SmaVariable -Name 'SMAContinuousIntegration-RepositoryInformation' `
-                                              -Value $UpdatedRepositoryInformation `
-                                              -WebServiceEndpoint $CIVariables.WebserviceEndpoint `
-                                              -Port $CIVariables.WebservicePort `
-                                              -Credential $SMACred
-
             Write-Verbose -Message "Finished Processing [$($RepositoryInformation.CurrentCommit)..$($RepositoryChange.CurrentCommit)]"
         }
     }
@@ -161,7 +166,9 @@ Workflow Invoke-GitRepositorySync
     {
         Write-Exception -Stream Warning -Exception $_
     }
-    Write-Verbose -Message "Finished [$WorkflowCommandName]"
+    Write-CompletedMessage -StartTime $StartTime -Name $FunctionName
+
+    Return (Select-FirstValid -Value @($UpdatedRepositoryInformation, $RepositoryInformationJSON))
 }
 
 <#
@@ -178,7 +185,7 @@ Workflow Invoke-GitRepositorySync
         The name of the repository that will be listed as the 'owner' of this
         runbook
 #>
-Workflow Publish-SMARunbookChange
+Function Publish-SMARunbookChange
 {
     Param(
         [Parameter(Mandatory=$True)]
@@ -191,37 +198,45 @@ Workflow Publish-SMARunbookChange
 
         [Parameter(Mandatory=$True)]
         [String]
-        $RepositoryName
+        $RepositoryName,
+
+        [Parameter(Mandatory=$True)]
+        [pscredential]
+        $Credential,
+
+        [Parameter(Mandatory=$False)]
+        [string]
+        $WebserviceEndpoint = 'https://localhost',
+
+        [Parameter(Mandatory=$False)]
+        [string]
+        $WebservicePort = '9090'
     )
     
-    Write-Verbose -Message "[$FilePath] Starting [$WorkflowCommandName]"
     $ErrorActionPreference = [System.Management.Automation.ActionPreference]::Stop
-
-    $CIVariables = Get-BatchAutomationVariable -Name @('SMACredName',
-                                                       'WebserviceEndpoint'
-                                                       'WebservicePort') `
-                                               -Prefix 'SMAContinuousIntegration'
-    $SMACred = Get-AutomationPSCredential -Name $CIVariables.SMACredName
+    $FunctionName = (Get-PSCallStack)[0].Command
+    Write-Verbose -Message "[$FilePath] Starting [$FunctionName]"
+    $StartTime = Get-Date
 
     Try
     {
-        $WorkflowName = Get-SmaWorkflowNameFromFile -FilePath $FilePath
+        $WorkflowName = Get-WorkflowNameFromFile -FilePath $FilePath
         
         $ErrorActionPreference = [System.Management.Automation.ActionPreference]::SilentlyContinue
         $Runbook = Get-SmaRunbook -Name $WorkflowName `
-                                  -WebServiceEndpoint $CIVariables.WebserviceEndpoint `
-                                  -Port $CIVariables.WebservicePort `
-                                  -Credential $SMACred
+                                  -WebServiceEndpoint $WebserviceEndpoint `
+                                  -Port $WebservicePort `
+                                  -Credential $Credential
         $ErrorActionPreference = [System.Management.Automation.ActionPreference]::Stop
 
-        if(Test-IsNullOrEmpty $Runbook.RunbookID.Guid)
+        if($Runbook -as [bool])
         {
             Write-Verbose -Message "[$WorkflowName] Initial Import"
             
             $Runbook = Import-SmaRunbook -Path $FilePath `
-                                         -WebServiceEndpoint $CIVariables.WebserviceEndpoint `
-                                         -Port $CIVariables.WebservicePort `
-                                         -Credential $SMACred
+                                         -WebServiceEndpoint $WebserviceEndpoint `
+                                         -Port $WebservicePort `
+                                         -Credential $Credential
             
             $TagLine = "RepositoryName:$RepositoryName;CurrentCommit:$CurrentCommit;"
             $NewVersion = $True
@@ -229,9 +244,9 @@ Workflow Publish-SMARunbookChange
         else
         {
             Write-Verbose -Message "[$WorkflowName] Update"
-            $TagUpdateJSON = New-SmaChangesetTagLine -TagLine $Runbook.Tags `
-                                                     -CurrentCommit $CurrentCommit `
-                                                     -RepositoryName $RepositoryName
+            $TagUpdateJSON = New-ChangesetTagLine -TagLine $Runbook.Tags `
+                                                  -CurrentCommit $CurrentCommit `
+                                                  -RepositoryName $RepositoryName
             $TagUpdate = ConvertFrom-Json $TagUpdateJSON
             $TagLine = $TagUpdate.TagLine
             $NewVersion = $TagUpdate.NewVersion
@@ -240,9 +255,9 @@ Workflow Publish-SMARunbookChange
                 $EditStatus = Edit-SmaRunbook -Overwrite `
                                               -Path $FilePath `
                                               -Name $WorkflowName `
-                                              -WebServiceEndpoint $CIVariables.WebserviceEndpoint `
-                                              -Port $CIVariables.WebservicePort `
-                                              -Credential $SMACred                
+                                              -WebServiceEndpoint $WebserviceEndpoint `
+                                              -Port $WebservicePort `
+                                              -Credential $Credential
             }
             else
             {
@@ -252,22 +267,22 @@ Workflow Publish-SMARunbookChange
         if($NewVersion)
         {
             $PublishHolder = Publish-SmaRunbook -Name $WorkflowName `
-                                                -WebServiceEndpoint $CIVariables.WebserviceEndpoint `
-                                                -Port $CIVariables.WebservicePort `
-                                                -Credential $SMACred
+                                                -WebServiceEndpoint $WebserviceEndpoint `
+                                                -Port $WebservicePort `
+                                                -Credential $Credential
 
             Set-SmaRunbookTags -RunbookID $Runbook.RunbookID.Guid `
                                -Tags $TagLine `
-                               -WebserviceEndpoint $CIVariables.WebserviceEndpoint `
-                               -Port $CIVariables.WebservicePort `
-                               -Credential $SMACred
+                               -WebserviceEndpoint $WebserviceEndpoint `
+                               -Port $WebservicePort `
+                               -Credential $Credential
         }
     }
     Catch
     {
         Write-Exception -Stream Warning -Exception $_
     }
-    Write-Verbose -Message "[$FilePath] Finished [$WorkflowCommandName]"
+    Write-CompletedMessage -StartTime $StartTime -Name "[$FunctionName] [$FilePath]"
 }
 
 <#
@@ -283,7 +298,7 @@ Workflow Publish-SMARunbookChange
 .Parameter RepositoryName
     The Repository Name that will 'own' the variables and schedules
 #>
-Workflow Publish-SMASettingsFileChange
+Function Publish-SMASettingsFileChange
 {
     Param( 
         [Parameter(Mandatory = $True)]
@@ -296,23 +311,31 @@ Workflow Publish-SMASettingsFileChange
 
         [Parameter(Mandatory = $True)]
         [String]
-        $RepositoryName
+        $RepositoryName,
+
+        [Parameter(Mandatory=$True)]
+        [pscredential]
+        $Credential,
+
+        [Parameter(Mandatory=$False)]
+        [string]
+        $WebserviceEndpoint = 'https://localhost',
+
+        [Parameter(Mandatory=$False)]
+        [string]
+        $WebservicePort = '9090'
     )
     
-    Write-Verbose -Message "[$FilePath] Starting [$WorkflowCommandName]"
     $ErrorActionPreference = [System.Management.Automation.ActionPreference]::Stop
-
-    $CIVariables = Get-BatchAutomationVariable -Name @('SMACredName', 
-                                                       'WebserviceEndpoint'
-                                                       'WebservicePort') `
-                                               -Prefix 'SMAContinuousIntegration'
-    $SMACred = Get-AutomationPSCredential -Name $CIVariables.SMACredName
+    $FunctionName = (Get-PSCallStack)[0].Command
+    Write-Verbose -Message "[$FilePath] Starting [$FunctionName]"
+    $StartTime = Get-Date
 
     Try
     {
-        $VariablesJSON = Get-SmaGlobalFromFile -FilePath $FilePath -GlobalType Variables
-        $Variables = ConvertFrom-PSCustomObject -InputObject (ConvertFrom-Json -InputObject $VariablesJSON)
-        foreach($VariableName in $Variables.Keys)
+        $VariablesJSON = Get-GlobalFromFile -FilePath $FilePath -GlobalType Variables
+        $Variables = $VariablesJSON | ConvertFrom-JSON | ConvertFrom-PSCustomObject
+        foreach($VariableName in ($Variables.Keys -as [array]))
         {
             Try
             {
@@ -320,11 +343,11 @@ Workflow Publish-SMASettingsFileChange
                 $Variable = $Variables."$VariableName"
                 $ErrorActionPreference = [System.Management.Automation.ActionPreference]::SilentlyContinue
                 $SmaVariable = Get-SmaVariable -Name $VariableName `
-                                               -WebServiceEndpoint $CIVariables.WebserviceEndpoint `
-                                               -Port $CIVariables.WebservicePort `
-                                               -Credential $SMACred
+                                               -WebServiceEndpoint $WebserviceEndpoint `
+                                               -Port $WebservicePort `
+                                               -Credential $Credential
                 $ErrorActionPreference = [System.Management.Automation.ActionPreference]::Stop
-                if(Test-IsNullOrEmpty -String $SmaVariable.VariableId.Guid)
+                if($SmaVariable -as [bool])
                 {
                     Write-Verbose -Message "[$($VariableName)] is a New Variable"
                     $VariableDescription = "$($Variable.Description)`n`r__RepositoryName:$($RepositoryName);CurrentCommit:$($CurrentCommit);__"
@@ -333,9 +356,9 @@ Workflow Publish-SMASettingsFileChange
                 else
                 {
                     Write-Verbose -Message "[$($VariableName)] is an existing Variable"
-                    $TagUpdateJSON = New-SmaChangesetTagLine -TagLine $SmaVariable.Description`
-                                                             -CurrentCommit $CurrentCommit `
-                                                             -RepositoryName $RepositoryName
+                    $TagUpdateJSON = New-ChangesetTagLine -TagLine $SmaVariable.Description`
+                                                          -CurrentCommit $CurrentCommit `
+                                                          -RepositoryName $RepositoryName
                     $TagUpdate = ConvertFrom-Json -InputObject $TagUpdateJSON
                     $VariableDescription = "$($TagUpdate.TagLine)"
                     $NewVersion = $TagUpdate.NewVersion
@@ -346,20 +369,18 @@ Workflow Publish-SMASettingsFileChange
                         'Name' = $VariableName ;
                         'Value' = $Variable.Value ;
                         'Description' = $VariableDescription ;
-                        'WebServiceEndpoint' = $CIVariables.WebserviceEndpoint ;
-                        'Port' = $CIVariables.WebservicePort ;
-                        'Credential' = $SMACred ;
+                        'WebServiceEndpoint' = $WebserviceEndpoint ;
+                        'Port' = $WebservicePort ;
+                        'Credential' = $Credential ;
                         'Force' = $True ;
                     }
-                    if(ConvertTo-Boolean -InputString $Variable.isEncrypted)
+                    if($Variable.isEncrypted -as [bool])
                     {
+                        $null = $SmaVariableParameters.Add('Encrypted',$True)
                         $CreateEncryptedVariable = Set-SmaVariable @SmaVariableParameters `
                                                                    -Encrypted
                     }
-                    else
-                    {
-                        $CreateEncryptedVariable = Set-SmaVariable @SmaVariableParameters
-                    }
+                    $null = Set-SmaVariable @SmaVariableParameters
                 }
                 else
                 {
@@ -378,8 +399,8 @@ Workflow Publish-SMASettingsFileChange
                 Write-Warning -Message $Exception -WarningAction Continue
             }
         }
-        $SchedulesJSON = Get-SmaGlobalFromFile -FilePath $FilePath -GlobalType Schedules
-        $Schedules = ConvertFrom-PSCustomObject -InputObject (ConvertFrom-Json -InputObject $SchedulesJSON)
+        $SchedulesJSON = Get-GlobalFromFile -FilePath $FilePath -GlobalType Schedules
+        $Schedules = $SchedulesJSON | ConvertFrom-JSON | ConvertFrom-PSCustomObject
         foreach($ScheduleName in $Schedules.Keys)
         {
             Write-Verbose -Message "[$ScheduleName] Updating"
@@ -388,11 +409,11 @@ Workflow Publish-SMASettingsFileChange
                 $Schedule = $Schedules."$ScheduleName"
                 $ErrorActionPreference = [System.Management.Automation.ActionPreference]::SilentlyContinue
                 $SmaSchedule = Get-SmaSchedule -Name $ScheduleName `
-                                               -WebServiceEndpoint $CIVariables.WebserviceEndpoint `
-                                               -Port $CIVariables.WebservicePort `
-                                               -Credential $SMACred
+                                               -WebServiceEndpoint $WebserviceEndpoint `
+                                               -Port $WebservicePort `
+                                               -Credential $Credential
                 $ErrorActionPreference = [System.Management.Automation.ActionPreference]::Stop
-                if(Test-IsNullOrEmpty -String $SmaSchedule.ScheduleId.Guid)
+                if($SmaSchedule -as [bool])
                 {
                     Write-Verbose -Message "[$($ScheduleName)] is a New Schedule"
                     $ScheduleDescription = "$($Schedule.Description)`n`r__RepositoryName:$($RepositoryName);CurrentCommit:$($CurrentCommit);__"
@@ -401,9 +422,9 @@ Workflow Publish-SMASettingsFileChange
                 else
                 {
                     Write-Verbose -Message "[$($ScheduleName)] is an existing Schedule"
-                    $TagUpdateJSON = New-SmaChangesetTagLine -TagLine $SmaVariable.Description`
-                                                         -CurrentCommit $CurrentCommit `
-                                                         -RepositoryName $RepositoryName
+                    $TagUpdateJSON = New-ChangesetTagLine -TagLine $SmaVariable.Description`
+                                                          -CurrentCommit $CurrentCommit `
+                                                          -RepositoryName $RepositoryName
                     $TagUpdate = ConvertFrom-Json -InputObject $TagUpdateJSON
                     $ScheduleDescription = "$($TagUpdate.TagLine)"
                     $NewVersion = $TagUpdate.NewVersion
@@ -416,9 +437,9 @@ Workflow Publish-SMASettingsFileChange
                                                       -DayInterval $Schedule.DayInterval `
                                                       -StartTime $Schedule.NextRun `
                                                       -ExpiryTime $Schedule.ExpirationTime `
-                                                      -WebServiceEndpoint $CIVariables.WebserviceEndpoint `
-                                                      -Port $CIVariables.WebservicePort `
-                                                      -Credential $SMACred
+                                                      -WebServiceEndpoint $WebserviceEndpoint `
+                                                      -Port $WebservicePort `
+                                                      -Credential $Credential
 
                     if(Test-IsNullOrEmpty -String $CreateSchedule)
                     {
@@ -431,9 +452,9 @@ Workflow Publish-SMASettingsFileChange
                             'DayInterval'      = $Schedule.DayInterval
                             'StartTime'        = $Schedule.NextRun
                             'ExpiryTime'       = $Schedule.ExpirationTime
-                            'WebServiceEndpoint' = $CIVariables.WebserviceEndpoint
-                            'Port'             = $CIVariables.WebservicePort
-                            'Credential'       = $SMACred.UserName
+                            'WebServiceEndpoint' = $WebserviceEndpoint
+                            'Port'             = $WebservicePort
+                            'Credential'       = $Credential.UserName
                         }
                     }
                     try
@@ -442,10 +463,10 @@ Workflow Publish-SMASettingsFileChange
                                                                    -MemberType NoteProperty `
                         $RunbookStart = Start-SmaRunbook -Name $Schedule.RunbookName `
                                                          -ScheduleName $ScheduleName `
-                                                         -WebServiceEndpoint $CIVariables.WebserviceEndpoint `
-                                                         -Port $CIVariables.WebservicePort `
+                                                         -WebServiceEndpoint $WebserviceEndpoint `
+                                                         -Port $WebservicePort `
                                                          -Parameters $Parameters `
-                                                         -Credential $SMACred
+                                                         -Credential $Credential
                         if(Test-IsNullOrEmpty -String $RunbookStart)
                         {
                             Throw-Exception -Type 'ScheduleFailedToSet' `
@@ -460,9 +481,9 @@ Workflow Publish-SMASettingsFileChange
                     catch
                     {
                         Remove-SmaSchedule -Name $ScheduleName `
-                                           -WebServiceEndpoint $CIVariables.WebserviceEndpoint `
-                                           -Port $CIVariables.WebservicePort `
-                                           -Credential $SMACred `
+                                           -WebServiceEndpoint $WebserviceEndpoint `
+                                           -Port $WebservicePort `
+                                           -Credential $Credential `
                                            -Force
                         Write-Exception -Exception $_ -Stream Warning
                     }
@@ -479,7 +500,7 @@ Workflow Publish-SMASettingsFileChange
     {
         Write-Exception -Stream Warning -Exception $_
     }
-    Write-Verbose -Message "[$FilePath] Finished [$WorkflowCommandName]"
+    Write-CompletedMessage -StartTime $StartTime -Name "[$FunctionName] [$FilePath]"
 }
 
 <#
@@ -491,37 +512,53 @@ Workflow Publish-SMASettingsFileChange
 .Parameter RepositoryName
     The name of the repository
 #>
-Workflow Remove-SmaOrphanAsset
+Function Remove-SmaOrphanAsset
 {
-    Param($RepositoryName)
+    Param(
+        [Parameter(Mandatory=$True)]
+        [string]
+        $RepositoryInfoJSON,
+        
+        [Parameter(Mandatory=$True)]
+        [string]
+        $RepositoryName,
 
-    Write-Verbose -Message "Starting [$WorkflowCommandName]"
+        [Parameter(Mandatory=$True)]
+        [pscredential]
+        $Credential,
+
+        [Parameter(Mandatory=$False)]
+        [string]
+        $WebserviceEndpoint = 'https://localhost',
+
+        [Parameter(Mandatory=$False)]
+        [string]
+        $WebservicePort = '9090'
+    )
+
     $ErrorActionPreference = [System.Management.Automation.ActionPreference]::Stop
+    $FunctionName = (Get-PSCallStack)[0].Command
+    Write-Verbose -Message "Starting [$FunctionName]"
+    $StartTime = Get-Date
+
     Try
     {
-        $CIVariables = Get-BatchAutomationVariable -Name @('RepositoryInformation', 
-                                                       'SMACredName', 
-                                                       'WebserviceEndpoint'
-                                                       'WebservicePort') `
-                                                   -Prefix 'SMAContinuousIntegration'
-        $SMACred = Get-AutomationPSCredential -Name $CIVariables.SMACredName
+        $RepositoryInformation = $RepositoryInfoJSON | ConvertFrom-Json
 
-        $RepositoryInformation = (ConvertFrom-Json -InputObject $CIVariables.RepositoryInformation)."$RepositoryName"
-
-        $SmaVariables = Get-SmaVariable -WebServiceEndpoint $CIVariables.WebserviceEndpoint `
-                                        -Port $CIVariables.WebservicePort `
-                                        -Credential $SMACred
+        $SmaVariables = Get-SmaVariable -WebServiceEndpoint $WebserviceEndpoint `
+                                        -Port $WebservicePort `
+                                        -Credential $Credential
         if($SmaVariables) 
         {
-            $SmaVariableTable = Group-SmaAssetsByRepository -InputObject $SmaVariables 
+            $SmaVariableTable = Group-AssetsByRepository -InputObject $SmaVariables 
         }
 
-        $SmaSchedules = Get-SmaSchedule -WebServiceEndpoint $CIVariables.WebserviceEndpoint `
-                                        -Port $CIVariables.WebservicePort `
-                                        -Credential $SMACred
+        $SmaSchedules = Get-SmaSchedule -WebServiceEndpoint $WebserviceEndpoint `
+                                        -Port $WebservicePort `
+                                        -Credential $Credential
         if($SmaSchedules) 
         {
-            $SmaScheduleTable = Group-SmaAssetsByRepository -InputObject $SmaSchedules 
+            $SmaScheduleTable = Group-AssetsByRepository -InputObject $SmaSchedules 
         }
 
         $RepositoryAssets = Get-GitRepositoryAssetName -Path "$($RepositoryInformation.Path)\$($RepositoryInformation.RunbookFolder)"
@@ -538,9 +575,9 @@ Workflow Remove-SmaOrphanAsset
                     {
                         Write-Verbose -Message "[$($Difference.InputObject)] Does not exist in Source Control"
                         Remove-SmaVariable -Name $Difference.InputObject `
-                                           -WebServiceEndpoint $CIVariables.WebserviceEndpoint `
-                                           -Port $CIVariables.WebservicePort `
-                                           -Credential $SMACred
+                                           -WebServiceEndpoint $WebserviceEndpoint `
+                                           -Port $WebservicePort `
+                                           -Credential $Credential
                         Write-Verbose -Message "[$($Difference.InputObject)] Removed from SMA"
                     }
                 }
@@ -549,12 +586,12 @@ Workflow Remove-SmaOrphanAsset
                     $Exception = New-Exception -Type 'RemoveSmaAssetFailure' `
                                                 -Message 'Failed to remove a Sma Asset' `
                                                 -Property @{
-                        'ErrorMessage' = (Convert-ExceptionToString $_) ;
+                        'ErrorMessage' = (Convert-ExceptionToString -Exception $_) ;
                         'AssetName' = $Difference.InputObject ;
                         'AssetType' = 'Variable' ;
-                        'WebserviceEnpoint' = $CIVariables.WebserviceEndpoint ;
-                        'Port' = $CIVariables.WebservicePort ;
-                        'Credential' = $SMACred.UserName ;
+                        'WebserviceEnpoint' = $WebserviceEndpoint ;
+                        'Port' = $WebservicePort ;
+                        'Credential' = $Credential.UserName ;
                     }
                     Write-Warning -Message $Exception -WarningAction Continue
                 }
@@ -578,9 +615,9 @@ Workflow Remove-SmaOrphanAsset
                     {
                         Write-Verbose -Message "[$($Difference.InputObject)] Does not exist in Source Control"
                         Remove-SmaSchedule -Name $Difference.InputObject `
-                                           -WebServiceEndpoint $CIVariables.WebserviceEndpoint `
-                                           -Port $CIVariables.WebservicePort `
-                                           -Credential $SMACred
+                                           -WebServiceEndpoint $WebserviceEndpoint `
+                                           -Port $WebservicePort `
+                                           -Credential $Credential
                         Write-Verbose -Message "[$($Difference.InputObject)] Removed from SMA"
                     }
                 }
@@ -592,9 +629,9 @@ Workflow Remove-SmaOrphanAsset
                         'ErrorMessage' = (Convert-ExceptionToString $_) ;
                         'AssetName' = $Difference.InputObject ;
                         'AssetType' = 'Schedule' ;
-                        'WebserviceEnpoint' = $CIVariables.WebserviceEndpoint ;
-                        'Port' = $CIVariables.WebservicePort ;
-                        'Credential' = $SMACred.UserName ;
+                        'WebserviceEnpoint' = $WebserviceEndpoint ;
+                        'Port' = $WebservicePort ;
+                        'Credential' = $Credential.UserName ;
                     }
                     Write-Exception -Exception $Exception -Stream Warning
                 }
@@ -616,7 +653,7 @@ Workflow Remove-SmaOrphanAsset
         }
         Write-Exception -Exception $Exception -Stream Warning
     }
-    Write-Verbose -Message "Finished [$WorkflowCommandName]"
+    Write-CompletedMessage -StartTime $StartTime -Name $FunctionName
 }
 
 <#
@@ -624,28 +661,43 @@ Workflow Remove-SmaOrphanAsset
         Checks a SMA environment and removes any modules that are not found
         in the local psmodulepath
 #>
-Workflow Remove-SmaOrphanModule
+Function Remove-SmaOrphanModule
 {
-    Write-Verbose -Message "Starting [$WorkflowCommandName]"
+    Param(
+        [Parameter(Mandatory=$True)]
+        [string]
+        $RepositoryName,
+
+        [Parameter(Mandatory=$True)]
+        [pscredential]
+        $Credential,
+
+        [Parameter(Mandatory=$False)]
+        [string]
+        $WebserviceEndpoint = 'https://localhost',
+
+        [Parameter(Mandatory=$False)]
+        [string]
+        $WebservicePort = '9090'
+    
+    )
+
     $ErrorActionPreference = [System.Management.Automation.ActionPreference]::Stop
+    $FunctionName = (Get-PSCallStack)[0].Command
+    Write-Verbose -Message "Starting [$FunctionName]"
+    $StartTime = Get-Date
     Try
     {
-        $CIVariables = Get-BatchAutomationVariable -Name @('SMACredName',
-                                                       'WebserviceEndpoint'
-                                                       'WebservicePort') `
-                                               -Prefix 'SMAContinuousIntegration'
-        $SMACred = Get-AutomationPSCredential -Name $CIVariables.SMACredName
-
-        $SmaModule = Get-SmaModule -WebServiceEndpoint $CIVariables.WebserviceEndpoint `
-                                   -Port $CIVariables.WebservicePort `
-                                   -Credential $SMACred
+        $SmaModule = Get-SmaModule -WebServiceEndpoint $WebserviceEndpoint `
+                                   -Port $WebservicePort `
+                                   -Credential $Credential
 
         $LocalModule = Get-Module -ListAvailable -Refresh -Verbose:$false
 
         if(-not ($SmaModule -and $LocalModule))
         {
-            if(-not $SmaModule)   { Write-Warning -Message 'No modules found in SMA. Not cleaning orphan modules' }
-            if(-not $LocalModule) { Write-Warning -Message 'No modules found in local PSModule Path. Not cleaning orphan modules' }
+            if(-not $SmaModule)   { Write-Warning -Message 'No modules found in SMA. Not cleaning orphan modules' -WarningAction Continue }
+            if(-not $LocalModule) { Write-Warning -Message 'No modules found in local PSModule Path. Not cleaning orphan modules' -WarningAction Continue }
         }
         else
         {
@@ -696,7 +748,7 @@ Workflow Remove-SmaOrphanModule
         Write-Exception -Exception $Exception -Stream Warning
     }
     
-    Write-Verbose -Message "Finished [$WorkflowCommandName]"
+    Write-CompletedMessage -StartTime $StartTime -Name $FunctionName
 }
 
 <#
@@ -708,27 +760,43 @@ Workflow Remove-SmaOrphanModule
     .Parameter RepositoryName
         The name of the repository
 #>
-Workflow Remove-SmaOrphanRunbook
+Function Remove-SmaOrphanRunbook
 {
-    Param($RepositoryName)
+    Param(
+        [Parameter(Mandatory=$True)]
+        [string]
+        $RepositoryInfoJSON,
+        
+        [Parameter(Mandatory=$True)]
+        [string]
+        $RepositoryName,
 
-    Write-Verbose -Message "Starting [$WorkflowCommandName]"
+        [Parameter(Mandatory=$True)]
+        [pscredential]
+        $Credential,
+
+        [Parameter(Mandatory=$False)]
+        [string]
+        $WebserviceEndpoint = 'https://localhost',
+
+        [Parameter(Mandatory=$False)]
+        [string]
+        $WebservicePort = '9090'
+    )
+
     $ErrorActionPreference = [System.Management.Automation.ActionPreference]::Stop
+    $FunctionName = (Get-PSCallStack)[0].Command
+    Write-Verbose -Message "Starting [$FunctionName]"
+    $StartTime = Get-Date
+
     Try
     {
-        $CIVariables = Get-BatchAutomationVariable -Name @('RepositoryInformation',
-                                                           'SMACredName',
-                                                           'WebserviceEndpoint'
-                                                           'WebservicePort') `
-                                                   -Prefix 'SMAContinuousIntegration'
-        $SMACred = Get-AutomationPSCredential -Name $CIVariables.SMACredName
+        $RepositoryInformation = (ConvertFrom-JSON -InputObject $RepositoryInfoJSON)."$RepositoryName"
 
-        $RepositoryInformation = (ConvertFrom-JSON -InputObject $CIVariables.RepositoryInformation)."$RepositoryName"
-
-        $SmaRunbooks = Get-SMARunbookPaged -WebserviceEndpoint $CIVariables.WebserviceEndpoint `
-                                           -Port $CIVariables.WebservicePort `
-                                           -Credential $SMACred
-        if($SmaRunbooks) { $SmaRunbookTable = Group-SmaRunbooksByRepository -InputObject $SmaRunbooks }
+        $SmaRunbooks = Get-SMARunbookPaged -WebserviceEndpoint $WebserviceEndpoint `
+                                           -Port $WebservicePort `
+                                           -Credential $Credential
+        if($SmaRunbooks) { $SmaRunbookTable = Group-RunbooksByRepository -InputObject $SmaRunbooks }
         $RepositoryWorkflows = Get-GitRepositoryWorkflowName -Path "$($RepositoryInformation.Path)\$($RepositoryInformation.RunbookFolder)"
         $Differences = Compare-Object -ReferenceObject $SmaRunbookTable.$RepositoryName.RunbookName `
                                       -DifferenceObject $RepositoryWorkflows
@@ -741,9 +809,9 @@ Workflow Remove-SmaOrphanRunbook
                 {
                     Write-Verbose -Message "[$($Difference.InputObject)] Does not exist in Source Control"
                     Remove-SmaRunbook -Name $Difference.InputObject `
-                                      -WebServiceEndpoint $CIVariables.WebserviceEndpoint `
-                                      -Port $CIVariables.WebservicePort `
-                                      -Credential $SMACred
+                                      -WebServiceEndpoint $WebserviceEndpoint `
+                                      -Port $WebservicePort `
+                                      -Credential $Credential
                     Write-Verbose -Message "[$($Difference.InputObject)] Removed from SMA"
                 }
                 Catch
@@ -753,9 +821,9 @@ Workflow Remove-SmaOrphanRunbook
                                                -Property @{
                         'ErrorMessage' = (Convert-ExceptionToString $_) ;
                         'RunbookName' = $Difference.InputObject ;
-                        'WebserviceEnpoint' = $CIVariables.WebserviceEndpoint ;
-                        'Port' = $CIVariables.WebservicePort ;
-                        'Credential' = $SMACred.UserName ;
+                        'WebserviceEnpoint' = $WebserviceEndpoint ;
+                        'Port' = $WebservicePort ;
+                        'Credential' = $Credential.UserName ;
                     }
                     Write-Warning -Message $Exception -WarningAction Continue
                 }
