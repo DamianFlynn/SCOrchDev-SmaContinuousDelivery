@@ -210,7 +210,7 @@ Function Publish-SMARunbookChange
                                   -Credential $Credential
         $ErrorActionPreference = [System.Management.Automation.ActionPreference]::Stop
 
-        if($Runbook -as [bool])
+        if(-not($Runbook -as [bool]))
         {
             Write-Verbose -Message "[$WorkflowName] Initial Import"
             
@@ -328,7 +328,7 @@ Function Publish-SMASettingsFileChange
                                                -Port $WebservicePort `
                                                -Credential $Credential
                 $ErrorActionPreference = [System.Management.Automation.ActionPreference]::Stop
-                if($SmaVariable -as [bool])
+                if(-not($SmaVariable -as [bool]))
                 {
                     Write-Verbose -Message "[$($VariableName)] is a New Variable"
                     $VariableDescription = "$($Variable.Description)`n`r__RepositoryName:$($RepositoryName);CurrentCommit:$($CurrentCommit);__"
@@ -392,7 +392,7 @@ Function Publish-SMASettingsFileChange
                                                -Port $WebservicePort `
                                                -Credential $Credential
                 $ErrorActionPreference = [System.Management.Automation.ActionPreference]::Stop
-                if($SmaSchedule -as [bool])
+                if(-not($SmaSchedule -as [bool]))
                 {
                     Write-Verbose -Message "[$($ScheduleName)] is a New Schedule"
                     $ScheduleDescription = "$($Schedule.Description)`n`r__RepositoryName:$($RepositoryName);CurrentCommit:$($CurrentCommit);__"
