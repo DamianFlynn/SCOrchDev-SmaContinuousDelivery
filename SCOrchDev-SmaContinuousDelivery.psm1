@@ -86,7 +86,7 @@ Function Invoke-GitRepositorySync
                                               -RepositoryName $RepositoryName `
                                               -Credential $Credential `
                                               -WebserviceEndpoint $WebserviceEndpoint `
-                                              -WebservicePort $WebserviceEndpoint
+                                              -WebservicePort $WebservicePort
             }
             
             Foreach($ModulePath in $ReturnInformation.ModuleFiles)
@@ -105,7 +105,7 @@ Function Invoke-GitRepositorySync
                                          -RepositoryName $RepositoryName `
                                          -Credential $Credential `
                                          -WebserviceEndpoint $WebserviceEndpoint `
-                                         -WebservicePort $WebserviceEndpoint
+                                         -WebservicePort $WebservicePort
             }
             
             if($ReturnInformation.CleanRunbooks)
@@ -114,7 +114,7 @@ Function Invoke-GitRepositorySync
                                          -RepositoryInformationJSON $RepositoryInformationJSON `
                                          -Credential $Credential `
                                          -WebserviceEndpoint $WebserviceEndpoint `
-                                         -WebservicePort $WebserviceEndpoint
+                                         -WebservicePort $WebservicePort
             }
             if($ReturnInformation.CleanAssets)
             {
@@ -122,14 +122,14 @@ Function Invoke-GitRepositorySync
                                       -RepositoryInformationJSON $RepositoryInformationJSON `
                                       -Credential $Credential `
                                       -WebserviceEndpoint $WebserviceEndpoint `
-                                      -WebservicePort $WebserviceEndpoint
+                                      -WebservicePort $WebservicePort
             }
             if($ReturnInformation.CleanModules)
             {
                 Remove-SmaOrphanModule -RepositoryName $RepositoryName `
                                         -Credential $Credential `
                                         -WebserviceEndpoint $WebserviceEndpoint `
-                                        -WebservicePort $WebserviceEndpoint
+                                        -WebservicePort $WebservicePort
             }
             if($ReturnInformation.ModuleFiles)
             {
