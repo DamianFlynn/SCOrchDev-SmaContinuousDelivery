@@ -46,7 +46,7 @@ Function Invoke-GitRepositorySync
     
     $ErrorActionPreference = [System.Management.Automation.ActionPreference]::Stop
     $FunctionName = (Get-PSCallStack)[0].Command
-    Write-Verbose -Message "Starting [$FunctionName]"
+    Write-Verbose -Message "[$RepositoryName] Starting [$FunctionName]"
     $StartTime = Get-Date
 
     Try
@@ -54,7 +54,7 @@ Function Invoke-GitRepositorySync
         $RepositoryInformation = (ConvertFrom-Json -InputObject $RepositoryInformationJSON)."$RepositoryName"
         Write-Verbose -Message "`$RepositoryInformation [$(ConvertTo-Json -InputObject $RepositoryInformation)]"
 
-        $RunbookWorker = Get-SMARunbookWorker
+        $RunbookWorker = Get-SMARunbookWorker -WebserviceEndpoint $WebserviceEndpoint -WebservicePort $WebservicePort
         
         # Update the repository on all SMA Workers
         Invoke-Command -ComputerName $RunbookWorker -Credential $Credential -ScriptBlock {
@@ -147,7 +147,7 @@ Function Invoke-GitRepositorySync
     {
         Write-Exception -Stream Warning -Exception $_
     }
-    Write-CompletedMessage -StartTime $StartTime -Name $FunctionName
+    Write-CompletedMessage -StartTime $StartTime -Name "$RepositoryName - $FunctionName"
 
     Return (Select-FirstValid -Value @($UpdatedRepositoryInformation, $RepositoryInformationJSON))
 }
@@ -822,7 +822,7 @@ Function Remove-SmaOrphanRunbook
     Write-CompletedMessage -StartTime $StartTime -Name $FunctionName
 }
 
-Update-LocalRunbookWokerModulePath
+Function Update-LocalRunbookWokerModulePath
 {
     Param(
         [Parameter(Mandatory=$True)]
