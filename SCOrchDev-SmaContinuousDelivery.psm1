@@ -137,7 +137,7 @@ Function Invoke-GitRepositorySync
                                                    -PowerShellModuleFolder "$($RepositoryInformation.Path)\$($RepositoryInformation.PowerShellModuleFolder)"
                 
             }
-            $UpdatedRepositoryInformation = (Update-RepositoryInformationCommitVersion -RepositoryInformation $RepositoryInformation `
+            $UpdatedRepositoryInformation = (Update-RepositoryInformationCommitVersion -RepositoryInformationJSON $RepositoryInformationJSON `
                                                                                        -RepositoryName $RepositoryName `
                                                                                        -Commit $RepositoryChange.CurrentCommit) -as [string]
             Write-Verbose -Message "Finished Processing [$($RepositoryInformation.CurrentCommit)..$($RepositoryChange.CurrentCommit)]"
