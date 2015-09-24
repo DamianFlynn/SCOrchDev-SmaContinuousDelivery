@@ -540,7 +540,7 @@ Function Remove-SmaOrphanAsset
             $SmaScheduleTable = Group-AssetsByRepository -InputObject $SmaSchedules 
         }
 
-        $RepositoryAssets = Get-GitRepositoryAssetName -Path "$($RepositoryInformation.Path)\$($RepositoryInformation.RunbookFolder)"
+        $RepositoryAssets = Get-GitRepositoryAssetName -Path "$($RepositoryInformation.Path)\$($RepositoryInformation.GlobalsFolder)"
 
         if($SmaVariableTable."$RepositoryName")
         {
