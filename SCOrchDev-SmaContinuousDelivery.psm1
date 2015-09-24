@@ -665,18 +665,24 @@ Function Remove-SmaOrphanModule
     $FunctionName = (Get-PSCallStack)[0].Command
     Write-Verbose -Message "Starting [$FunctionName]"
     $StartTime = Get-Date
+
+    $ReservedSMAModule = @(
+        'OrchestratorService',
+        'RunbookConstructs'
+    )
+
     Try
     {
-        $SmaModule = Get-SmaModule -WebServiceEndpoint $WebserviceEndpoint `
-                                   -Port $WebservicePort `
-                                   -Credential $Credential
+        $SmaModule = Get-SmaModuleREST -WebServiceEndpoint $WebserviceEndpoint `
+                                       -Port $WebservicePort `
+                                       -Credential $Credential
 
         $LocalModule = Get-Module -ListAvailable -Refresh -Verbose:$false
 
         if(-not ($SmaModule -and $LocalModule))
         {
-            if(-not $SmaModule)   { Write-Warning -Message 'No modules found in SMA. Not cleaning orphan modules' -WarningAction Continue }
-            if(-not $LocalModule) { Write-Warning -Message 'No modules found in local PSModule Path. Not cleaning orphan modules' -WarningAction Continue }
+            if(-not $SmaModule)   { Throw-Exception -Type 'NoSMAModulesFound' -Message 'No modules found in SMA. Not cleaning orphan modules' }
+            if(-not $LocalModule) { Throw-Exception -Type 'NoLocalModulesFound' -Message 'No modules found in local PSModule Path. Not cleaning orphan modules' }
         }
         else
         {
@@ -688,16 +694,16 @@ Function Remove-SmaOrphanModule
                 {
                     Try
                     {
-                        Write-Verbose -Message "[$($Difference.InputObject)] Does not exist in Source Control"
-                        <#
-                        TODO: Investigate / Test before uncommenting. Potential to brick an environment
+                        if($Difference.InputObject -notin $ReservedSMAModule)
+                        {
+                            Write-Verbose -Message "[$($Difference.InputObject)] Does not exist in Source Control"
 
-                        Remove-SmaModule -Name $Difference.InputObject `
-                                         -WebServiceEndpoint $CIVariables.WebserviceEndpoint `
-                                         -Port $CIVariables.WebservicePort `
-                                         -Credential $SMACred
-                        #>
-                        Write-Verbose -Message "[$($Difference.InputObject)] Removed from SMA"
+                            Remove-SmaModule -Name $Difference.InputObject `
+                                             -WebServiceEndpoint $WebserviceEndpoint `
+                                             -Port $WebservicePort `
+                                             -Credential $Credential
+                            Write-Verbose -Message "[$($Difference.InputObject)] Removed from SMA"
+                        }
                     }
                     Catch
                     {
