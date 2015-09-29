@@ -1,9 +1,9 @@
 ﻿$here = Split-Path -Parent $MyInvocation.MyCommand.Path
 
-$manifestPath = "$here\SCOrchDev-ContinuousDelivery.psd1"
+$manifestPath = "$here\SCOrchDev-SmaContinuousDelivery.psd1"
 Import-Module $manifestPath -Force
 
-Describe -Tags 'VersionChecks' 'SCOrchDev-ContinuousDelivery' {
+Describe -Tags 'VersionChecks' 'SCOrchDev-SmaContinuousDelivery' {
     $script:manifest = $null
     It 'has a valid manifest' {
         {
@@ -12,7 +12,7 @@ Describe -Tags 'VersionChecks' 'SCOrchDev-ContinuousDelivery' {
     }
 
     It 'has a valid name in the manifest' {
-        $script:manifest.Name | Should Be SCOrchDev-ContinuousDelivery
+        $script:manifest.Name | Should Be SCOrchDev-SmaContinuousDelivery
     }
 
     It 'has a valid guid in the manifest' {

@@ -12,7 +12,7 @@
 RootModule = '.\SCOrchDev-SmaContinuousDelivery.psm1'
 
 # Version number of this module.
-ModuleVersion = '1.0.7'
+ModuleVersion = '1.0.8'
 
 # ID used to uniquely identify this module
 GUID = '050a089e-8ab9-41d1-9e8e-756f60cdd62e'
@@ -81,7 +81,7 @@ AliasesToExport = '*'
 ModuleList = @('SCOrchDev-ContinuousDelivery')
 
 # List of all files packaged with this module
-FileList = @('SCOrchDev-ContinuousDelivery.psd1', 'SCOrchDev-ContinuousDelivery.psm1', 'SCOrchDev-ContinuousDelivery.tests.ps1', 'LICENSE', 'README.md')
+FileList = @('SCOrchDev-SmaContinuousDelivery.psd1', 'SCOrchDev-SmaContinuousDelivery.psm1', 'SCOrchDev-SmaContinuousDelivery.tests.ps1', 'LICENSE', 'README.md')
 
 # Private data to pass to the module specified in RootModule/ModuleToProcess
 # PrivateData = ''

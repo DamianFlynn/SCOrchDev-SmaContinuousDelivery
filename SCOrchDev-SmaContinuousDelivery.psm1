@@ -866,4 +866,74 @@ Function Update-LocalRunbookWokerModulePath
     }
     Write-CompletedMessage -StartTime $StartTime -Name $FunctionName
 }
+<#
+    .Synopsis
+        Invokes test suites on the Runbooks and PowerShell modules
+#>
+Function Invoke-IntegrationTests
+{
+    Param(
+        [Parameter(
+            Mandatory = $True,
+            Position = 0,
+            ValueFromPipeline = $True
+        )]
+        [string]
+        $RunbookPath,
+        [Parameter(
+            Mandatory = $True,
+            Position = 0,
+            ValueFromPipeline = $True
+        )]
+        [string]
+        $ModulePath,
+        [Parameter(
+            Mandatory = $False,
+            Position = 0,
+            ValueFromPipeline = $True
+        )]
+        [string[]]
+        $IgnorePath = [string]::Empty
+    )
+    $ErrorActionPreference = [System.Management.Automation.ActionPreference]::Stop
+    $FunctionName = (Get-PSCallStack)[0].Command
+    Write-Verbose -Message "Starting [$FunctionName]"
+    $StartTime = Get-Date
+
+    $File = Get-ChildItem -Path @($RunbookPath,$ModulePath) `
+                          -Include @('*.tests.ps1') `
+                          -Recurse
+
+    Try
+    {
+        if((Get-Module -Name Pester -ListAvailable) -as [bool])
+        {
+            $PesterResults = @{}
+            Foreach($_File in $File)
+            {
+                $Include = $True
+                Foreach($_IgnorePath in $IgnorePath)
+                {
+                    if(
+                        (-not(Test-IsNullOrEmpty -String $IgnorePath)) -and
+                        $_File.FullName -like "$_IgnorePath*"
+                    )
+                    {
+                        $Include = $false
+                        break
+                    }
+                }
+                if($Include) { $Null = $PesterResults.Add($_File.FullName, (Invoke-Pester -Script $_File.FullName -PassThru)) }
+            }
+        }
+        if((Get-Module -Name PSScriptAnalyzer -ListAvailable) -as [bool])
+        {
+        }
+    }
+    Catch
+    {
+    }
+
+    Write-CompletedMessage -StartTime $StartTime -Name $FunctionName
+}
 Export-ModuleMember -Function * -Verbose:$false -Debug:$False
