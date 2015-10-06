@@ -12,7 +12,7 @@
 RootModule = '.\SCOrchDev-SmaContinuousDelivery.psm1'
 
 # Version number of this module.
-ModuleVersion = '1.0.8'
+ModuleVersion = '1.0.9'
 
 # ID used to uniquely identify this module
 GUID = '050a089e-8ab9-41d1-9e8e-756f60cdd62e'

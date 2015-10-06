@@ -870,7 +870,7 @@ Function Update-LocalRunbookWokerModulePath
     .Synopsis
         Invokes test suites on the Runbooks and PowerShell modules
 #>
-Function Invoke-IntegrationTests
+Function Invoke-IntegrationTest
 {
     Param(
         [Parameter(
@@ -879,61 +879,34 @@ Function Invoke-IntegrationTests
             ValueFromPipeline = $True
         )]
         [string]
-        $RunbookPath,
-        [Parameter(
-            Mandatory = $True,
-            Position = 0,
-            ValueFromPipeline = $True
-        )]
-        [string]
-        $ModulePath,
-        [Parameter(
-            Mandatory = $False,
-            Position = 0,
-            ValueFromPipeline = $True
-        )]
-        [string[]]
-        $IgnorePath = [string]::Empty
+        $Path
     )
     $ErrorActionPreference = [System.Management.Automation.ActionPreference]::Stop
-    $FunctionName = (Get-PSCallStack)[0].Command
-    Write-Verbose -Message "Starting [$FunctionName]"
-    $StartTime = Get-Date
-
-    $File = Get-ChildItem -Path @($RunbookPath,$ModulePath) `
-                          -Include @('*.tests.ps1') `
-                          -Recurse
-
+    $CompletedParameters = Write-StartingMessage
+    $Result = @{ 'Pester' = $null ; 'PSScriptAnalyzer'  = $null }
     Try
     {
         if((Get-Module -Name Pester -ListAvailable) -as [bool])
         {
-            $PesterResults = @{}
-            Foreach($_File in $File)
-            {
-                $Include = $True
-                Foreach($_IgnorePath in $IgnorePath)
-                {
-                    if(
-                        (-not(Test-IsNullOrEmpty -String $IgnorePath)) -and
-                        $_File.FullName -like "$_IgnorePath*"
-                    )
-                    {
-                        $Include = $false
-                        break
-                    }
-                }
-                if($Include) { $Null = $PesterResults.Add($_File.FullName, (Invoke-Pester -Script $_File.FullName -PassThru)) }
-            }
+            $ChildItem = Get-ChildItem -Path $Path -Recurse -Include *.ps1,*.psm1 -Exclude *.tests.ps1
+            $Result.Pester = Invoke-Pester $Path -CodeCoverage $ChildItem.FullName -Quiet -PassThru
         }
         if((Get-Module -Name PSScriptAnalyzer -ListAvailable) -as [bool])
         {
+            $Result.PSScriptAnalyzer = New-Object -TypeName System.Collections.ArrayList
+            $ChildItem = Get-ChildItem -Path $Path -Recurse -Include *.ps1,*.psm1 -Exclude *.tests.ps1
+            $ChildItem | ForEach-Object {
+                $AnalyzerResult = Invoke-ScriptAnalyzer -Path $_.FullName
+                $Null = $Result.PSScriptAnalyzer.Add(@{'FileName' = $_.FullName ; 'AnalyzerResult' = $AnalyzerResult })
+            }
         }
     }
     Catch
     {
+        Write-Exception -Exception $_ -Stream Warning
     }
 
-    Write-CompletedMessage -StartTime $StartTime -Name $FunctionName
+    Write-CompletedMessage @CompletedParameters
+    Return $Result
 }
 Export-ModuleMember -Function * -Verbose:$false -Debug:$False
