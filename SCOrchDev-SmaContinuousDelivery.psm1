@@ -524,9 +524,9 @@ Function Remove-SmaOrphanAsset
     {
         $RepositoryInformation = ($RepositoryInformationJSON | ConvertFrom-Json)."$RepositoryName"
 
-        $SmaVariables = Get-SmaVariable -WebServiceEndpoint $WebserviceEndpoint `
-                                        -Port $WebservicePort `
-                                        -Credential $Credential
+        $SmaVariables = Get-SmaVariablePaged -WebServiceEndpoint $WebserviceEndpoint `
+                                             -WebservicePort $WebservicePort `
+                                             -Credential $Credential
         if($SmaVariables) 
         {
             $SmaVariableTable = Group-AssetsByRepository -InputObject $SmaVariables 
