@@ -525,7 +525,7 @@ Function Remove-SmaOrphanAsset
         $RepositoryInformation = ($RepositoryInformationJSON | ConvertFrom-Json)."$RepositoryName"
 
         $SmaVariables = Get-SmaVariablePaged -WebServiceEndpoint $WebserviceEndpoint `
-                                             -WebservicePort $WebservicePort `
+                                             -Port $WebservicePort `
                                              -Credential $Credential
         if($SmaVariables) 
         {
