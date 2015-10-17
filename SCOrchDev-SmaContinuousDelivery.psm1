@@ -64,18 +64,23 @@ Function Invoke-GitRepositorySync
                 $ErrorActionPreference = [System.Management.Automation.ActionPreference]::Stop
                     
                 $RepositoryInformation = $Using:RepositoryInformation
-                Update-GitRepository -RepositoryInformation $RepositoryInformation
+                Update-GitRepository -RepositoryPath $RepositoryInformation.RepositoryPath `
+                                     -LocalPath $RepositoryInformation.Path
             )
         }
 
-        $RepositoryChangeJSON = Find-GitRepositoryChange -RepositoryInformation $RepositoryInformation
+        $RepositoryChangeJSON = Find-GitRepositoryChange -Path $RepositoryInformation.Path `
+                                                         -StartCommit $RepositoryInformation.CurrentCommit
         $RepositoryChange = ConvertFrom-Json -InputObject $RepositoryChangeJSON
         if("$($RepositoryChange.CurrentCommit)" -ne "$($RepositoryInformation.CurrentCommit)")
         {
             Write-Verbose -Message "Processing [$($RepositoryInformation.CurrentCommit)..$($RepositoryChange.CurrentCommit)]"
             Write-Verbose -Message "RepositoryChange [$RepositoryChangeJSON]"
-            $ReturnInformationJSON = Group-RepositoryFile -Files $RepositoryChange.Files `
-                                                          -RepositoryInformation $RepositoryInformation
+            $ReturnInformationJSON = Group-RepositoryFile -File $RepositoryChange.Files `
+                                                          -Path $RepositoryInformation.Path `
+                                                          -RunbookFolder $RepositoryInformation.RunbookFolder `
+                                                          -GlobalsFolder $RepositoryInformation.GlobalsFolder `
+                                                          -PowerShellModuleFolder $RepositoryInformation.PowerShellModuleFolder
             $ReturnInformation = ConvertFrom-Json -InputObject $ReturnInformationJSON
             Write-Verbose -Message "ReturnInformation [$ReturnInformationJSON]"
             
