@@ -1,7 +1,7 @@
 ﻿$here = Split-Path -Parent $MyInvocation.MyCommand.Path
 
 $manifestPath = "$here\SCOrchDev-SmaContinuousDelivery.psd1"
-Import-Module $manifestPath -Force
+Import-Module SCOrchDev-SmaContinuousDelivery -Force
 
 Describe -Tags 'VersionChecks' 'SCOrchDev-SmaContinuousDelivery' {
     $script:manifest = $null
