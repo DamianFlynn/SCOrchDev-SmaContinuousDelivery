@@ -65,7 +65,7 @@ Function Invoke-GitRepositorySync
                     
                 $RepositoryInformation = $Using:RepositoryInformation
                 Update-GitRepository -RepositoryPath $RepositoryInformation.RepositoryPath `
-                                     -LocalPath $RepositoryInformation.Path
+                                     -Path $RepositoryInformation.Path
             )
         }
 
