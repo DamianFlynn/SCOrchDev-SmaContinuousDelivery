@@ -1,4 +1,4 @@
-﻿<#
+<#
 .Synopsis
     Check GIT repository for new commits. If found sync the changes into
     the current SMA environment
@@ -43,7 +43,7 @@ Function Invoke-GitRepositorySync
         [string]
         $WebservicePort = '9090'
     )
-    
+
     $ErrorActionPreference = [System.Management.Automation.ActionPreference]::Stop
     $FunctionName = (Get-PSCallStack)[0].Command
     Write-Verbose -Message "[$RepositoryName] Starting [$FunctionName]"
@@ -55,14 +55,14 @@ Function Invoke-GitRepositorySync
         Write-Verbose -Message "`$RepositoryInformation [$(ConvertTo-Json -InputObject $RepositoryInformation)]"
 
         $RunbookWorker = Get-SMARunbookWorker -WebserviceEndpoint $WebserviceEndpoint -WebservicePort $WebservicePort
-        
+
         # Update the repository on all SMA Workers
         Invoke-Command -ComputerName $RunbookWorker -Credential $Credential -ScriptBlock {
             $null = $(
                 $DebugPreference       = [System.Management.Automation.ActionPreference]::SilentlyContinue
                 $VerbosePreference     = [System.Management.Automation.ActionPreference]::SilentlyContinue
                 $ErrorActionPreference = [System.Management.Automation.ActionPreference]::Stop
-                    
+
                 $RepositoryInformation = $Using:RepositoryInformation
                 Update-GitRepository -RepositoryPath $RepositoryInformation.RepositoryPath `
                                      -Path $RepositoryInformation.Path
@@ -83,7 +83,7 @@ Function Invoke-GitRepositorySync
                                                           -PowerShellModuleFolder $RepositoryInformation.PowerShellModuleFolder
             $ReturnInformation = ConvertFrom-Json -InputObject $ReturnInformationJSON
             Write-Verbose -Message "ReturnInformation [$ReturnInformationJSON]"
-            
+
             Foreach($SettingsFilePath in $ReturnInformation.SettingsFiles)
             {
                 Publish-SMASettingsFileChange -FilePath $SettingsFilePath `
@@ -93,10 +93,10 @@ Function Invoke-GitRepositorySync
                                               -WebserviceEndpoint $WebserviceEndpoint `
                                               -WebservicePort $WebservicePort
             }
-            
+
             Foreach($ModulePath in $ReturnInformation.ModuleFiles)
             {
-                
+
                 Import-SmaPowerShellModule -ModulePath $ModulePath `
                                            -WebserviceEndpoint $WebserviceEndpoint `
                                            -WebservicePort $WebservicePort `
@@ -112,7 +112,7 @@ Function Invoke-GitRepositorySync
                                          -WebserviceEndpoint $WebserviceEndpoint `
                                          -WebservicePort $WebservicePort
             }
-            
+
             if($ReturnInformation.CleanRunbooks)
             {
                 Remove-SmaOrphanRunbook -RepositoryName $RepositoryName `
@@ -140,7 +140,7 @@ Function Invoke-GitRepositorySync
             {
                 Update-LocalRunbookWokerModulePath -RunbookWorker $RunbookWorker `
                                                    -PowerShellModuleFolder "$($RepositoryInformation.Path)\$($RepositoryInformation.PowerShellModuleFolder)"
-                
+
             }
             $UpdatedRepositoryInformation = (Update-RepositoryInformationCommitVersion -RepositoryInformationJSON $RepositoryInformationJSON `
                                                                                        -RepositoryName $RepositoryName `
@@ -160,7 +160,7 @@ Function Invoke-GitRepositorySync
 <#
     .Synopsis
         Takes a ps1 file and publishes it to the current SMA environment.
-    
+
     .Parameter FilePath
         The full path to the script file
 
@@ -198,7 +198,7 @@ Function Publish-SMARunbookChange
         [string]
         $WebservicePort = '9090'
     )
-    
+
     $ErrorActionPreference = [System.Management.Automation.ActionPreference]::Stop
     $FunctionName = (Get-PSCallStack)[0].Command
     Write-Verbose -Message "[$FilePath] Starting [$FunctionName]"
@@ -207,7 +207,7 @@ Function Publish-SMARunbookChange
     Try
     {
         $WorkflowName = Get-WorkflowNameFromFile -FilePath $FilePath
-        
+
         $ErrorActionPreference = [System.Management.Automation.ActionPreference]::SilentlyContinue
         $Runbook = Get-SmaRunbook -Name $WorkflowName `
                                   -WebServiceEndpoint $WebserviceEndpoint `
@@ -218,12 +218,12 @@ Function Publish-SMARunbookChange
         if(-not($Runbook -as [bool]))
         {
             Write-Verbose -Message "[$WorkflowName] Initial Import"
-            
+
             $Runbook = Import-SmaRunbook -Path $FilePath `
                                          -WebServiceEndpoint $WebserviceEndpoint `
                                          -Port $WebservicePort `
                                          -Credential $Credential
-            
+
             $TagLine = "RepositoryName:$RepositoryName;CurrentCommit:$CurrentCommit;"
             $NewVersion = $True
         }
@@ -274,7 +274,7 @@ Function Publish-SMARunbookChange
 <#
 .Synopsis
     Takes a json file and publishes all schedules and variables from it into SMA
-    
+
 .Parameter FilePath
     The path to the settings file to process
 
@@ -286,11 +286,11 @@ Function Publish-SMARunbookChange
 #>
 Function Publish-SMASettingsFileChange
 {
-    Param( 
+    Param(
         [Parameter(Mandatory = $True)]
-        [String] 
+        [String]
         $FilePath,
-        
+
         [Parameter(Mandatory = $True)]
         [String]
         $CurrentCommit,
@@ -311,7 +311,7 @@ Function Publish-SMASettingsFileChange
         [string]
         $WebservicePort = '9090'
     )
-    
+
     $ErrorActionPreference = [System.Management.Automation.ActionPreference]::Stop
     $FunctionName = (Get-PSCallStack)[0].Command
     Write-Verbose -Message "[$FilePath] Starting [$FunctionName]"
@@ -319,8 +319,8 @@ Function Publish-SMASettingsFileChange
 
     Try
     {
-        $VariablesJSON = Get-GlobalFromFile -FilePath $FilePath -GlobalType Variables
-        $Variables = $VariablesJSON | ConvertFrom-JSON | ConvertFrom-PSCustomObject
+        $Variables = Get-GlobalFromFile -FilePath $FilePath -GlobalType Variables
+        #$Variables = $VariablesJSON | ConvertFrom-JSON | ConvertFrom-PSCustomObject
         foreach($VariableName in ($Variables.Keys -as [array]))
         {
             Try
@@ -342,10 +342,10 @@ Function Publish-SMASettingsFileChange
                 else
                 {
                     Write-Verbose -Message "[$($VariableName)] is an existing Variable"
-                    $TagUpdateJSON = New-ChangesetTagLine -TagLine $SmaVariable.Description`
+                    $TagUpdate = New-ChangesetTagLine -TagLine $SmaVariable.Description`
                                                           -CurrentCommit $CurrentCommit `
                                                           -RepositoryName $RepositoryName
-                    $TagUpdate = ConvertFrom-Json -InputObject $TagUpdateJSON
+                    #$TagUpdate = ConvertFrom-Json -InputObject $TagUpdateJSON
                     $VariableDescription = "$($TagUpdate.TagLine)"
                     $NewVersion = $TagUpdate.NewVersion
                 }
@@ -383,8 +383,8 @@ Function Publish-SMASettingsFileChange
                 Write-Warning -Message $Exception -WarningAction Continue
             }
         }
-        $SchedulesJSON = Get-GlobalFromFile -FilePath $FilePath -GlobalType Schedules
-        $Schedules = $SchedulesJSON | ConvertFrom-JSON | ConvertFrom-PSCustomObject
+        $Schedules = Get-GlobalFromFile -FilePath $FilePath -GlobalType Schedules
+        #$Schedules = $SchedulesJSON | ConvertFrom-JSON | ConvertFrom-PSCustomObject
         foreach($ScheduleName in $Schedules.Keys)
         {
             Write-Verbose -Message "[$ScheduleName] Updating"
@@ -406,10 +406,10 @@ Function Publish-SMASettingsFileChange
                 else
                 {
                     Write-Verbose -Message "[$($ScheduleName)] is an existing Schedule"
-                    $TagUpdateJSON = New-ChangesetTagLine -TagLine $SmaVariable.Description`
+                    $TagUpdate = New-ChangesetTagLine -TagLine $SmaVariable.Description`
                                                           -CurrentCommit $CurrentCommit `
                                                           -RepositoryName $RepositoryName
-                    $TagUpdate = ConvertFrom-Json -InputObject $TagUpdateJSON
+                    #$TagUpdate = ConvertFrom-Json -InputObject $TagUpdateJSON
                     $ScheduleDescription = "$($TagUpdate.TagLine)"
                     $NewVersion = $TagUpdate.NewVersion
                 }
@@ -502,7 +502,7 @@ Function Remove-SmaOrphanAsset
         [Parameter(Mandatory=$True)]
         [string]
         $RepositoryInformationJSON,
-        
+
         [Parameter(Mandatory=$True)]
         [string]
         $RepositoryName,
@@ -532,17 +532,17 @@ Function Remove-SmaOrphanAsset
         $SmaVariables = Get-SmaVariablePaged -WebServiceEndpoint $WebserviceEndpoint `
                                              -Port $WebservicePort `
                                              -Credential $Credential
-        if($SmaVariables) 
+        if($SmaVariables)
         {
-            $SmaVariableTable = Group-AssetsByRepository -InputObject $SmaVariables 
+            $SmaVariableTable = Group-AssetsByRepository -InputObject $SmaVariables
         }
 
         $SmaSchedules = Get-SmaSchedule -WebServiceEndpoint $WebserviceEndpoint `
                                         -Port $WebservicePort `
                                         -Credential $Credential
-        if($SmaSchedules) 
+        if($SmaSchedules)
         {
-            $SmaScheduleTable = Group-AssetsByRepository -InputObject $SmaSchedules 
+            $SmaScheduleTable = Group-AssetsByRepository -InputObject $SmaSchedules
         }
 
         $RepositoryAssets = Get-GitRepositoryAssetName -Path "$($RepositoryInformation.Path)\$($RepositoryInformation.GlobalsFolder)"
@@ -663,7 +663,7 @@ Function Remove-SmaOrphanModule
         [Parameter(Mandatory=$False)]
         [string]
         $WebservicePort = '9090'
-    
+
     )
 
     $ErrorActionPreference = [System.Management.Automation.ActionPreference]::Stop
@@ -737,7 +737,7 @@ Function Remove-SmaOrphanModule
         }
         Write-Exception -Exception $Exception -Stream Warning
     }
-    
+
     Write-CompletedMessage -StartTime $StartTime -Name $FunctionName
 }
 
@@ -756,7 +756,7 @@ Function Remove-SmaOrphanRunbook
         [Parameter(Mandatory=$True)]
         [string]
         $RepositoryInformationJSON,
-        
+
         [Parameter(Mandatory=$True)]
         [string]
         $RepositoryName,
@@ -790,7 +790,7 @@ Function Remove-SmaOrphanRunbook
         $RepositoryWorkflows = Get-GitRepositoryWorkflowName -Path "$($RepositoryInformation.Path)\$($RepositoryInformation.RunbookFolder)"
         $Differences = Compare-Object -ReferenceObject $SmaRunbookTable.$RepositoryName.RunbookName `
                                       -DifferenceObject $RepositoryWorkflows
-    
+
         Foreach($Difference in $Differences)
         {
             if($Difference.SideIndicator -eq '<=')
